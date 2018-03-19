@@ -1,0 +1,224 @@
+Link do tutorial: https://coursetro.com/posts/code/84/Setting-up-an-Angular-4-MEAN-Stack-(Tutorial)
+
+Setup do angular + express 
+
+Primeiramente devemos fazer o angular cli criar o projeto inicial, execute o seguinte comando
+
+ng new mean
+
+Acesse a pasta criada e execute o comando abaixo para efetuar o build do projeto, O EXPRESS IRA PROCURAR OS ARQUIVOS PARA EXECUTAR DENTRO DA PASTA /dist CRIADA COM ESTE COMANDO
+
+ng build
+
+Em seguida, devemos instalar o express e o body-parser que é um middleware reponsavel por analizar o corpo das requisições recebidas
+
+npm install express body-parser --save	
+
+Crie um arquivo server.js com o codigo necessario para servir a aplicação angular atravez do node na porta 3000
+
+
+
+const express = require('express');
+const bodyParser = require('body-parser');
+const path = require('path');
+const http = require('http');
+const app = express();
+
+// API file for interacting with MongoDB
+const api = require('./server/routes/api');
+
+// Parsers
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: false}));
+
+// Angular DIST output folder
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// API location
+app.use('/api', api);
+
+// Send all other requests to the Angular app
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dist/index.html'));
+});
+
+//Set Port
+const port = process.env.PORT || '3000';
+app.set('port', port);
+
+const server = http.createServer(app);
+
+server.listen(port, () => console.log(`Running on localhost:${port}`));
+
+
+
+Agora devemos iniciar o banco de dados que iremos utilizar, no nosso caso o MongoDB, para isso inicie o banco de dados 
+
+mongod
+
+Em outro terminal, acesse o mongo
+
+mongo
+
+Crie um novo schema e adicione dados ao documento users
+
+use mean
+db.users.insert({"name":"Elyervesson"})
+
+Para podemos acessar o banco de dados no node, devemos instalar a dependencia do mongodb
+
+npm install mongodb --save
+
+em seguida crie as pastas para abrigar os arquivos de rotas
+
+/mean (project folder)
+   /server
+      /routes
+
+Dentro da pasta de rotas, crie o arquivo api.js e cole o seguinte codigo
+
+
+
+const express = require('express');
+const router = express.Router();
+const MongoClient = require('mongodb').MongoClient;
+const ObjectID = require('mongodb').ObjectID;
+
+// Connect
+const connection = (closure) => {
+    return MongoClient.connect('mongodb://localhost:27017/mean', (err, client) => {
+        if (err) return console.log(err);
+
+        let db = client.db('mean');
+        closure(db);
+    });
+};
+
+// Error handling
+const sendError = (err, res) => {
+    response.status = 501;
+    response.message = typeof err == 'object' ? err.message : err;
+    res.status(501).json(response);
+};
+
+// Response handling
+let response = {
+    status: 200,
+    data: [],
+    message: null
+};
+
+// Get users
+router.get('/users', (req, res) => {
+    connection((db) => {
+        db.collection('users')
+            .find()
+            .toArray()
+            .then((users) => {
+                response.data = users;
+                res.json(response);
+            })
+            .catch((err) => {
+                sendError(err, res);
+            });
+    });
+});
+
+module.exports = router;
+
+
+
+Ele possue uma rota que retorna todos os usuarios
+
+
+Salve o arquivo e execute o seguinte comando para deixar o servidor rodando
+
+node server
+
+Ao visitar o localhost:3000 no end point api/router podemos ver o valor retornado do Mongo
+
+Criação de um serviço para a recuperação dos dados fornecidos pela API
+
+ng g service data
+
+Substitua o conteudo do arquivo /src/app/data.service.ts pelo seguinte
+
+
+
+
+import { Injectable } from '@angular/core';
+
+import { Http, Headers, RequestOptions } from '@angular/http';
+import 'rxjs/add/operator/map';
+
+@Injectable()
+export class DataService {
+
+  result:any;
+
+  constructor(private _http: Http) { }
+
+  getUsers() {
+    return this._http.get("/api/users")
+      .map(result => this.result = result.json().data);
+  }
+
+}
+
+
+Este serviço é responsavel por prover um metodo de recuperação dos dados getUsers()
+
+Por fim, devemos prover o serviço no modulo (para que os componentes saibam da sua existencia)
+
+
+
+import { BrowserModule } from '@angular/platform-browser';
+import { NgModule } from '@angular/core';
+import { AppComponent } from './app.component';
+
+// Import the Http Module and our Data Service
+import { HttpModule } from '@angular/http';
+import { DataService } from './data.service';
+
+@NgModule({
+  declarations: [
+    AppComponent
+  ],
+  imports: [
+    BrowserModule,
+    HttpModule              // <-Add HttpModule
+  ],
+  providers: [DataService], // <-Add DataService
+  bootstrap: [AppComponent]
+})
+export class AppModule { }
+
+
+
+De forma simples, para exibir todos os itens reculperados na pagina inicial, devemos alterar o app.component.ts
+
+import { Component } from '@angular/core';
+
+// Import the DataService
+import { DataService } from './data.service';
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.css']
+})
+export class AppComponent {
+  
+  // Define a users property to hold our user data
+  users: Array<any>;
+
+  // Create an instance of the DataService through dependency injection
+  constructor(private _dataService: DataService) {
+
+    // Access the Data Service's getUsers() method we defined
+    this._dataService.getUsers()
+        .subscribe(res => this.users = res);
+  }
+}
+
+E o seu respectivo template, não podemos esquecer de rodar o ng build para atualizar a pasta /dist
